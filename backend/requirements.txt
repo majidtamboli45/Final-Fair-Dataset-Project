@@ -1,8 +1,8 @@
-Flask
+flask
 flask-cors
 pandas
 scikit-learn
 fairlearn
 reportlab
-PyJWT
+pyjwt
 gunicorn
