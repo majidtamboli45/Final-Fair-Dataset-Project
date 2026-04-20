@@ -16,7 +16,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [fixedResult, setFixedResult] = useState(null);
 
-  const API = "http://127.0.0.1:5000";
+  const API = "https://backend.onrender.com";;
   const token = localStorage.getItem("token");
 
   if (!loggedIn) return <Login setLoggedIn={setLoggedIn} />;
