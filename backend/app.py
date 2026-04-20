@@ -1,3 +1,4 @@
+print("🔥 APP STARTING...")
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import pandas as pd
@@ -109,8 +110,7 @@ def inspect():
 # =============================
 # 📊 ANALYZE MODEL (UNCHANGED)
 # =============================
-@app.route('/analyze', methods=['POST'])
-@token_required
+@app.route("/analyze", methods=["POST"])
 def analyze():
     try:
         file = request.files.get('file')
@@ -120,6 +120,7 @@ def analyze():
         if not file or not target or not sensitive:
             return jsonify({"error": "Missing inputs"})
 
+        # ✅ Read uploaded file (NOT local file)
         df = pd.read_csv(file)
 
         if target not in df.columns:
