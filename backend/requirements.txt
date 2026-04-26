@@ -5,5 +5,4 @@ scikit-learn
 fairlearn
 reportlab
 gunicorn
-scipy==1.10.1
-scikit-learn==1.2.2
+
