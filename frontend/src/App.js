@@ -16,27 +16,38 @@ function App() {
   const [result, setResult] = useState(null);
   const [fixedResult, setFixedResult] = useState(null);
 
-  const API = "https://fair-ai-dashboard.onrender.com";;
+  // ✅ USE ENV VARIABLE (IMPORTANT)
+  const API = process.env.REACT_APP_API_URL;
   const token = localStorage.getItem("token");
 
   if (!loggedIn) return <Login setLoggedIn={setLoggedIn} />;
 
   const secureFetch = async (url, options) => {
-    const res = await fetch(url, {
-      ...options,
-      headers: { ...(options.headers || {}), Authorization: token }
-    });
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: token
+        }
+      });
 
-    if (res.status === 401) {
-      alert("Session expired");
-      localStorage.removeItem("token");
-      setLoggedIn(false);
+      if (res.status === 401) {
+        alert("Session expired");
+        localStorage.removeItem("token");
+        setLoggedIn(false);
+        return null;
+      }
+
+      return res;
+    } catch (err) {
+      console.error(err);
+      alert("Server not reachable");
       return null;
     }
-    return res;
   };
 
-  // ================= API =================
+  // ================= INSPECT =================
 
   const handleInspect = async () => {
     if (!files[0]) return alert("Upload dataset first");
@@ -44,88 +55,88 @@ function App() {
     const fd = new FormData();
     fd.append("file", files[0]);
 
-    const res = await secureFetch(`${API}/inspect`, { method: "POST", body: fd });
-    const data = await res.json();
-
-    setColumns(data.columns);
-    setTarget(data.target_candidates?.[0] || "");
-    setSensitive(data.sensitive_candidates?.[0] || "");
-    setWarnings(data.warnings || []);
-  };
-
-  const handleAnalyze = async () => {
-    const fd = new FormData();
-    fd.append("file", files[0]);
-    fd.append("target", target);
-    fd.append("sensitive", sensitive);
-
-    const res = await secureFetch(`${API}/analyze`, { method: "POST", body: fd });
-    const data = await res.json();
-
-    setResult(data);
-    setFixedResult(null);
-  };
-
-  const handleFix = async () => {
-    const fd = new FormData();
-    fd.append("file", files[0]);
-    fd.append("target", target);
-    fd.append("sensitive", sensitive);
-
-    const res = await secureFetch(`${API}/fix-bias`, { method: "POST", body: fd });
-    const data = await res.json();
-
-    setFixedResult(data);
-  };
-
-  // ================= DOWNLOADS =================
-
-  const downloadReport = async () => {
-    const res = await secureFetch(`${API}/generate-report`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fairness: result?.fairness_score,
-        bias: result?.bias,
-        most_biased: result?.most_biased_column,
-        fixed_fairness: fixedResult?.new_fairness_score,
-        fixed_bias: fixedResult?.new_bias
-      })
-    });
-
-    if (!res) return;
-
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "FairAI_Report.pdf";
-    a.click();
-  };
-
-  const downloadFair = async () => {
-    const fd = new FormData();
-    fd.append("file", files[0]);
-    fd.append("sensitive", sensitive);
-
-    const res = await secureFetch(`${API}/download-fair-data`, {
+    const res = await secureFetch(`${API}/inspect`, {
       method: "POST",
       body: fd
     });
 
     if (!res) return;
 
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
+    const data = await res.json();
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "fair_dataset.csv";
-    a.click();
+    console.log("INSPECT:", data);
+
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    setColumns(data.columns || []);
+    setTarget(data.target_candidates?.[0] || "");
+    setSensitive(data.sensitive_candidates?.[0] || "");
+    setWarnings(data.warnings || []);
   };
 
-  // ================= AI SUGGESTION =================
+  // ================= ANALYZE =================
+
+  const handleAnalyze = async () => {
+    if (!files[0]) return alert("Upload dataset first");
+
+    const fd = new FormData();
+    fd.append("file", files[0]);
+    fd.append("target", target);
+    fd.append("sensitive", sensitive);
+
+    const res = await secureFetch(`${API}/analyze`, {
+      method: "POST",
+      body: fd
+    });
+
+    if (!res) return;
+
+    const data = await res.json();
+
+    console.log("ANALYZE:", data);
+
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    setResult(data);
+    setFixedResult(null);
+  };
+
+  // ================= FIX =================
+
+  const handleFix = async () => {
+    if (!files[0]) return alert("Upload dataset first");
+
+    const fd = new FormData();
+    fd.append("file", files[0]);
+    fd.append("target", target);
+    fd.append("sensitive", sensitive);
+
+    const res = await secureFetch(`${API}/fix-bias`, {
+      method: "POST",
+      body: fd
+    });
+
+    if (!res) return;
+
+    const data = await res.json();
+
+    console.log("FIX:", data);
+
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    setFixedResult(data);
+  };
+
+  // ================= AI =================
 
   const getSuggestion = () => {
     if (!result) return "";
@@ -146,12 +157,18 @@ function App() {
     datasets: [
       {
         label: "Fairness",
-        data: [result.fairness_score, fixedResult?.new_fairness_score || 0],
+        data: [
+          result.fairness_score,
+          fixedResult?.new_fairness_score || 0
+        ],
         backgroundColor: "#00ffc6"
       },
       {
         label: "Bias",
-        data: [result.bias * 100, (fixedResult?.new_bias || 0) * 100],
+        data: [
+          result.bias * 100,
+          (fixedResult?.new_bias || 0) * 100
+        ],
         backgroundColor: "#ff4d6d"
       }
     ]
@@ -187,7 +204,7 @@ function App() {
 
       {/* FILE */}
       <div style={card}>
-        <input type="file" onChange={e => setFiles(e.target.files)} />
+        <input type="file" onChange={(e) => setFiles(e.target.files)} />
         <button style={btn} onClick={handleInspect}>Inspect</button>
       </div>
 
@@ -223,8 +240,6 @@ function App() {
           </div>
 
           <button style={btn} onClick={handleFix}>Fix Bias</button>
-          <button style={btn} onClick={downloadReport}>Download Report</button>
-          <button style={btn} onClick={downloadFair}>Download Fair Dataset</button>
         </div>
       )}
 
