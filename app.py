@@ -1,10 +1,12 @@
 print("🔥 APP STARTING...")
+
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import pandas as pd
 import io
 import datetime
 import jwt
+import traceback
 from functools import wraps
 
 from sklearn.model_selection import train_test_split
@@ -69,32 +71,36 @@ def token_required(f):
 
 
 # =============================
-# 🔍 INSPECT DATASET
+# 🔍 INSPECT DATASET (FIXED)
 # =============================
 @app.route('/inspect', methods=['POST'])
 @token_required
 def inspect():
     try:
         file = request.files.get('file')
+
         if not file:
             return jsonify({"error": "No file uploaded"})
 
-        df = pd.read_csv(file)
+        df = pd.read_csv(file, encoding="utf-8", engine="python")
+
+        if df.empty:
+            return jsonify({"error": "Dataset is empty"})
 
         columns = list(df.columns)
-        target_candidates = [col for col in columns if df[col].nunique() == 2]
-        sensitive_candidates = [col for col in columns if df[col].nunique() <= 5]
+
+        target_candidates = [
+            col for col in columns if df[col].nunique() == 2
+        ]
+
+        sensitive_candidates = [
+            col for col in columns if df[col].nunique() <= 5
+        ]
 
         warnings = []
 
         if df.isnull().sum().sum() > 0:
             warnings.append("⚠ Dataset contains missing values")
-
-        if not target_candidates:
-            warnings.append("❌ No binary target column found")
-
-        if not sensitive_candidates:
-            warnings.append("⚠ No suitable sensitive feature found")
 
         return jsonify({
             "columns": columns,
@@ -104,13 +110,15 @@ def inspect():
         })
 
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({"error": str(e)})
 
 
 # =============================
-# 📊 ANALYZE MODEL (UNCHANGED)
+# 📊 ANALYZE MODEL (FIXED + AUTH)
 # =============================
 @app.route("/analyze", methods=["POST"])
+@token_required
 def analyze():
     try:
         file = request.files.get('file')
@@ -120,7 +128,6 @@ def analyze():
         if not file or not target or not sensitive:
             return jsonify({"error": "Missing inputs"})
 
-        # ✅ Read uploaded file (NOT local file)
         df = pd.read_csv(file)
 
         if target not in df.columns:
@@ -131,6 +138,8 @@ def analyze():
 
         if df[target].nunique() != 2:
             return jsonify({"error": "Target must be binary"})
+
+        df = df.fillna(df.median(numeric_only=True))
 
         X = pd.get_dummies(df.drop(target, axis=1))
         y = df[target]
@@ -153,7 +162,6 @@ def analyze():
 
         fairness = round(100 - abs(bias * 100), 2)
 
-        # Column-wise bias
         column_bias = {}
         for col in df.columns:
             if col == target:
@@ -176,11 +184,12 @@ def analyze():
         })
 
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({"error": str(e)})
 
 
 # =============================
-# 🔥 FIX BIAS (FAIRLEARN ADDED)
+# 🔥 FIX BIAS
 # =============================
 @app.route('/fix-bias', methods=['POST'])
 @token_required
@@ -191,8 +200,6 @@ def fix_bias():
         sensitive = request.form.get("sensitive")
 
         df = pd.read_csv(file)
-
-        # Fill missing
         df = df.fillna(df.median(numeric_only=True))
 
         X = pd.get_dummies(df.drop(target, axis=1))
@@ -230,11 +237,12 @@ def fix_bias():
         })
 
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({"error": str(e)})
 
 
 # =============================
-# 📥 DOWNLOAD FAIR DATASET (WEIGHTS)
+# 📥 DOWNLOAD FAIR DATASET
 # =============================
 @app.route('/download-fair-data', methods=['POST'])
 @token_required
@@ -268,11 +276,12 @@ def download_fair_data():
                          mimetype='text/csv')
 
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({"error": str(e)})
 
 
 # =============================
-# 📄 PDF REPORT (UNCHANGED)
+# 📄 PDF REPORT
 # =============================
 @app.route('/generate-report', methods=['POST'])
 @token_required
@@ -305,6 +314,7 @@ def generate_report():
                          mimetype='application/pdf')
 
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({"error": str(e)})
 
 
