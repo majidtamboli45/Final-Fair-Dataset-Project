@@ -1,0 +1,8 @@
+flask
+flask-cors
+pandas==2.1.4
+scikit-learn==1.4.2
+scipy==1.11.4
+fairlearn
+reportlab
+gunicorn
