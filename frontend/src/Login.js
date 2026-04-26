@@ -19,10 +19,10 @@ function Login({ setLoggedIn }) {
     setLoading(true);
 
     try {
-      const res = await fetch(`${process.env.REACT_APP_API_URL}/login`), {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/login`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ username, password })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await res.json();
@@ -34,7 +34,8 @@ function Login({ setLoggedIn }) {
       } else {
         setError("❌ Invalid credentials");
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       setError("⚠️ Cannot connect to server");
     }
 
@@ -47,12 +48,11 @@ function Login({ setLoggedIn }) {
     background: darkMode
       ? "linear-gradient(135deg,#000000,#1c1c1c)"
       : "linear-gradient(135deg,#ff9a9e,#fad0c4)",
-    color: darkMode ? "white" : "black"
+    color: darkMode ? "white" : "black",
   };
 
   return (
     <div style={{ ...container, ...theme }}>
-
       {/* TOGGLE */}
       <div style={{ position: "absolute", top: 20, right: 20 }}>
         <button style={toggleBtn} onClick={() => setDarkMode(!darkMode)}>
@@ -94,7 +94,7 @@ function Login({ setLoggedIn }) {
           style={{
             ...btn,
             opacity: loading ? 0.6 : 1,
-            cursor: loading ? "not-allowed" : "pointer"
+            cursor: loading ? "not-allowed" : "pointer",
           }}
           onClick={handleLogin}
           disabled={loading}
@@ -112,14 +112,14 @@ function Login({ setLoggedIn }) {
 
 export default Login;
 
-/////////////////////// STYLES ///////////////////////
+// ================= STYLES =================
 
 const container = {
   height: "100vh",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  position: "relative"
+  position: "relative",
 };
 
 const card = {
@@ -129,7 +129,7 @@ const card = {
   borderRadius: "20px",
   width: "340px",
   textAlign: "center",
-  boxShadow: "0 8px 40px rgba(0,0,0,0.6)"
+  boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
 };
 
 const input = {
@@ -141,7 +141,7 @@ const input = {
   outline: "none",
   fontSize: "14px",
   background: "rgba(255,255,255,0.1)",
-  color: "white"
+  color: "white",
 };
 
 const btn = {
@@ -153,7 +153,6 @@ const btn = {
   background: "linear-gradient(45deg,#ff416c,#ff4b2b)",
   color: "white",
   fontWeight: "bold",
-  cursor: "pointer"
 };
 
 const toggleBtn = {
@@ -162,12 +161,11 @@ const toggleBtn = {
   border: "none",
   background: "#222",
   color: "white",
-  cursor: "pointer"
 };
 
 const errorStyle = {
   color: "#ff4d6d",
-  fontSize: "14px"
+  fontSize: "14px",
 };
 
 const eye = {
@@ -175,5 +173,5 @@ const eye = {
   right: "10px",
   top: "50%",
   transform: "translateY(-50%)",
-  cursor: "pointer"
+  cursor: "pointer",
 };
