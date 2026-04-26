@@ -1,116 +1,349 @@
 import React, { useState } from "react";
+import Login from "./Login";
+import { Bar } from "react-chartjs-2";
+import "chart.js/auto";
 
 function App() {
-  const [file, setFile] = useState(null);
-  const [downloadReady, setDownloadReady] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem("token"));
+  const [darkMode, setDarkMode] = useState(true);
+
+  const [files, setFiles] = useState([]);
+  const [columns, setColumns] = useState([]);
+  const [target, setTarget] = useState("");
+  const [sensitive, setSensitive] = useState("");
+  const [warnings, setWarnings] = useState([]);
+
+  const [result, setResult] = useState(null);
+  const [fixedResult, setFixedResult] = useState(null);
 
   const API = process.env.REACT_APP_API_URL;
+  const token = localStorage.getItem("token");
+
+  if (!loggedIn) return <Login setLoggedIn={setLoggedIn} />;
+
+  // ================= SAFE FETCH =================
+  const secureFetch = async (url, options) => {
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: token
+        }
+      });
+
+      if (res.status === 401) {
+        alert("Session expired");
+        localStorage.removeItem("token");
+        setLoggedIn(false);
+        return null;
+      }
+
+      return res;
+    } catch (err) {
+      console.error(err);
+      alert("Server not reachable");
+      return null;
+    }
+  };
 
   // ================= INSPECT =================
   const handleInspect = async () => {
-    if (!file) {
-      alert("Please upload a file first");
+    if (!files[0]) return alert("Upload dataset first");
+
+    const fd = new FormData();
+    fd.append("file", files[0]);
+
+    const res = await secureFetch(`${API}/inspect`, {
+      method: "POST",
+      body: fd
+    });
+
+    if (!res) return;
+
+    const data = await res.json();
+
+    if (data.error) {
+      alert(data.error);
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-
-    setLoading(true);
-
-    try {
-      const res = await fetch(`${API}/inspect`, {
-        method: "POST",
-        body: formData
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        alert(`✅ Processed!\nRows: ${data.rows}`);
-        setDownloadReady(true);
-      } else {
-        alert(data.error);
-      }
-    } catch (err) {
-      alert("❌ Server error");
-    }
-
-    setLoading(false);
+    setColumns(data.columns || []);
+    setTarget(data.target_candidates?.[0] || "");
+    setSensitive(data.sensitive_candidates?.[0] || "");
+    setWarnings(data.warnings || []);
   };
 
-  // ================= DOWNLOAD =================
-  const handleDownload = () => {
-    window.open(`${API}/download`, "_blank");
+  // ================= ANALYZE =================
+  const handleAnalyze = async () => {
+    if (!files[0]) return alert("Upload dataset first");
+
+    const fd = new FormData();
+    fd.append("file", files[0]);
+    fd.append("target", target);
+    fd.append("sensitive", sensitive);
+
+    const res = await secureFetch(`${API}/analyze`, {
+      method: "POST",
+      body: fd
+    });
+
+    if (!res) return;
+
+    const data = await res.json();
+
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    setResult(data);
+    setFixedResult(null);
+  };
+
+  // ================= FIX =================
+  const handleFix = async () => {
+    if (!files[0]) return alert("Upload dataset first");
+
+    const fd = new FormData();
+    fd.append("file", files[0]);
+    fd.append("target", target);
+    fd.append("sensitive", sensitive);
+
+    const res = await secureFetch(`${API}/fix-bias`, {
+      method: "POST",
+      body: fd
+    });
+
+    if (!res) return;
+
+    const data = await res.json();
+
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    setFixedResult(data);
+  };
+
+  // ================= DOWNLOAD REPORT =================
+  const downloadReport = async () => {
+    if (!result) {
+      alert("Run analysis first");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/generate-report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token
+        },
+        body: JSON.stringify({
+          fairness: result?.fairness_score,
+          bias: result?.bias,
+          most_biased: result?.most_biased_column,
+          fixed_fairness: fixedResult?.new_fairness_score,
+          fixed_bias: fixedResult?.new_bias
+        })
+      });
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "FairAI_Report.pdf";
+      a.click();
+    } catch (err) {
+      console.error(err);
+      alert("Error generating report");
+    }
+  };
+
+  // ================= NEW FEATURE =================
+  // DOWNLOAD FIXED DATASET
+  const downloadFixedDataset = async () => {
+    if (!files[0] || !target || !sensitive) {
+      alert("Run Fix Bias first");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append("file", files[0]);
+    fd.append("target", target);
+    fd.append("sensitive", sensitive);
+
+    const res = await secureFetch(`${API}/download-fair-data`, {
+      method: "POST",
+      body: fd
+    });
+
+    if (!res) return;
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fair_dataset.csv";
+    a.click();
+  };
+
+  // ================= AI =================
+  const getSuggestion = () => {
+    if (!result) return "";
+
+    if (result.bias > 0.2) {
+      return `⚠️ High bias detected. Removing '${sensitive}' may improve fairness significantly.`;
+    } else if (result.bias > 0.05) {
+      return `⚠️ Moderate bias detected in '${sensitive}'. Review recommended.`;
+    } else {
+      return "✅ Model looks fair.";
+    }
+  };
+
+  // ================= CHART =================
+  const chartData = result && {
+    labels: ["Before", "After"],
+    datasets: [
+      {
+        label: "Fairness",
+        data: [
+          result.fairness_score,
+          fixedResult?.new_fairness_score || 0
+        ],
+        backgroundColor: "#00ffc6"
+      },
+      {
+        label: "Bias",
+        data: [
+          result.bias * 100,
+          (fixedResult?.new_bias || 0) * 100
+        ],
+        backgroundColor: "#ff4d6d"
+      }
+    ]
+  };
+
+  // ================= UI =================
+  const theme = {
+    background: darkMode
+      ? "linear-gradient(135deg,#000000,#1c1c1c)"
+      : "linear-gradient(135deg,#ff9a9e,#fad0c4)",
+    color: darkMode ? "white" : "black"
   };
 
   return (
-    <div style={container}>
-      <h1 style={title}>🎬 FairAI Premium Dashboard</h1>
+    <div style={{ minHeight: "100vh", ...theme, padding: 20 }}>
 
-      <div style={card}>
-        <input
-          type="file"
-          onChange={(e) => setFile(e.target.files[0])}
-        />
-
-        <button style={btn} onClick={handleInspect}>
-          {loading ? "Processing..." : "Inspect"}
+      {/* TOP BAR */}
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <button onClick={() => setDarkMode(!darkMode)}>
+          {darkMode ? "☀️ Light" : "🌙 Dark"}
         </button>
 
-        {downloadReady && (
-          <button style={downloadBtn} onClick={handleDownload}>
-            ⬇ Download Fixed Dataset
-          </button>
-        )}
+        <button onClick={() => {
+          localStorage.removeItem("token");
+          setLoggedIn(false);
+        }}>
+          Logout
+        </button>
       </div>
+
+      <h1>🎬 FairAI Premium Dashboard</h1>
+
+      {/* FILE */}
+      <div style={card}>
+        <input type="file" onChange={(e) => setFiles(e.target.files)} />
+        <button style={btn} onClick={handleInspect}>Inspect</button>
+      </div>
+
+      {/* WARNINGS */}
+      {warnings.map((w, i) => (
+        <p key={i} style={{ color: "red" }}>{w}</p>
+      ))}
+
+      {/* SELECT */}
+      {columns.length > 0 && (
+        <div style={card}>
+          <select value={target} onChange={e => setTarget(e.target.value)}>
+            {columns.map(c => <option key={c}>{c}</option>)}
+          </select>
+
+          <select value={sensitive} onChange={e => setSensitive(e.target.value)}>
+            {columns.map(c => <option key={c}>{c}</option>)}
+          </select>
+
+          <button style={btn} onClick={handleAnalyze}>Analyze</button>
+        </div>
+      )}
+
+      {/* RESULT */}
+      {result && (
+        <div style={card}>
+          <h3>Fairness: {result.fairness_score}</h3>
+          <h3>Bias: {result.bias}</h3>
+          <p>🚨 Most Biased: {result.most_biased_column}</p>
+
+          <div style={aiBox}>
+            🧠 {getSuggestion()}
+          </div>
+
+          <button style={btn} onClick={handleFix}>Fix Bias</button>
+          <button style={btn} onClick={downloadReport}>Download Report</button>
+          <button style={btn} onClick={downloadFixedDataset}>
+            Download Fixed Dataset
+          </button>
+        </div>
+      )}
+
+      {/* FIXED */}
+      {fixedResult && (
+        <div style={card}>
+          <h3>After Fix</h3>
+          <p>Fairness: {fixedResult.new_fairness_score}</p>
+          <p>Bias: {fixedResult.new_bias}</p>
+        </div>
+      )}
+
+      {/* CHART */}
+      {chartData && (
+        <div style={card}>
+          <Bar data={chartData} />
+        </div>
+      )}
     </div>
   );
 }
 
-export default App;
-
-
 // ================= STYLES =================
-
-const container = {
-  height: "100vh",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "linear-gradient(135deg,#000000,#1c1c1c)",
-  color: "white"
-};
-
-const title = {
-  marginBottom: "30px"
-};
-
 const card = {
   background: "rgba(255,255,255,0.08)",
-  padding: "30px",
+  padding: "20px",
   borderRadius: "15px",
-  display: "flex",
-  gap: "15px",
-  alignItems: "center"
+  margin: "20px auto",
+  width: "70%",
+  backdropFilter: "blur(10px)"
 };
 
 const btn = {
   padding: "10px 20px",
-  border: "none",
+  margin: "10px",
   borderRadius: "8px",
-  background: "#ff416c",
+  border: "none",
+  background: "linear-gradient(45deg,#ff416c,#ff4b2b)",
   color: "white",
   cursor: "pointer"
 };
 
-const downloadBtn = {
-  padding: "10px 20px",
-  border: "none",
-  borderRadius: "8px",
-  background: "#28a745",
-  color: "white",
-  cursor: "pointer"
+const aiBox = {
+  marginTop: "15px",
+  padding: "10px",
+  background: "#111",
+  borderLeft: "4px solid #00ffc6"
 };
+
+export default App;
