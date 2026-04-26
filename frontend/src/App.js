@@ -16,12 +16,12 @@ function App() {
   const [result, setResult] = useState(null);
   const [fixedResult, setFixedResult] = useState(null);
 
-  // ✅ USE ENV VARIABLE (IMPORTANT)
   const API = process.env.REACT_APP_API_URL;
   const token = localStorage.getItem("token");
 
   if (!loggedIn) return <Login setLoggedIn={setLoggedIn} />;
 
+  // ================= SAFE FETCH =================
   const secureFetch = async (url, options) => {
     try {
       const res = await fetch(url, {
@@ -48,7 +48,6 @@ function App() {
   };
 
   // ================= INSPECT =================
-
   const handleInspect = async () => {
     if (!files[0]) return alert("Upload dataset first");
 
@@ -63,7 +62,6 @@ function App() {
     if (!res) return;
 
     const data = await res.json();
-
     console.log("INSPECT:", data);
 
     if (data.error) {
@@ -78,7 +76,6 @@ function App() {
   };
 
   // ================= ANALYZE =================
-
   const handleAnalyze = async () => {
     if (!files[0]) return alert("Upload dataset first");
 
@@ -95,7 +92,6 @@ function App() {
     if (!res) return;
 
     const data = await res.json();
-
     console.log("ANALYZE:", data);
 
     if (data.error) {
@@ -108,7 +104,6 @@ function App() {
   };
 
   // ================= FIX =================
-
   const handleFix = async () => {
     if (!files[0]) return alert("Upload dataset first");
 
@@ -125,7 +120,6 @@ function App() {
     if (!res) return;
 
     const data = await res.json();
-
     console.log("FIX:", data);
 
     if (data.error) {
@@ -136,8 +130,43 @@ function App() {
     setFixedResult(data);
   };
 
-  // ================= AI =================
+  // ================= DOWNLOAD REPORT =================
+  const downloadReport = async () => {
+    if (!result) {
+      alert("Run analysis first");
+      return;
+    }
 
+    try {
+      const res = await fetch(`${API}/generate-report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token
+        },
+        body: JSON.stringify({
+          fairness: result?.fairness_score,
+          bias: result?.bias,
+          most_biased: result?.most_biased_column,
+          fixed_fairness: fixedResult?.new_fairness_score,
+          fixed_bias: fixedResult?.new_bias
+        })
+      });
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "FairAI_Report.pdf";
+      a.click();
+    } catch (err) {
+      console.error(err);
+      alert("Error generating report");
+    }
+  };
+
+  // ================= AI =================
   const getSuggestion = () => {
     if (!result) return "";
 
@@ -151,7 +180,6 @@ function App() {
   };
 
   // ================= CHART =================
-
   const chartData = result && {
     labels: ["Before", "After"],
     datasets: [
@@ -175,7 +203,6 @@ function App() {
   };
 
   // ================= UI =================
-
   const theme = {
     background: darkMode
       ? "linear-gradient(135deg,#000000,#1c1c1c)"
@@ -240,6 +267,7 @@ function App() {
           </div>
 
           <button style={btn} onClick={handleFix}>Fix Bias</button>
+          <button style={btn} onClick={downloadReport}>Download Report</button>
         </div>
       )}
 
@@ -263,7 +291,6 @@ function App() {
 }
 
 // ================= STYLES =================
-
 const card = {
   background: "rgba(255,255,255,0.08)",
   padding: "20px",
